@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Monitor de Baleias — Bitcoin (AO VIVO)</title>
+  <meta name="description" content="Dashboard em tempo real para monitorar transações gigantes (baleias) em Bitcoin, com filtro por valor, alertas sonoros, gráfico e exportação CSV." />
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #0f172a;
+      --muted: #94a3b8;
+      --text: #e2e8f0;
+      --accent: #22d3ee; /* ciano */
+      --danger: #f43f5e;
+      --okay: #22c55e;
+      --warn: #f59e0b;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 800px at 80% -10%, rgba(34,211,238,.15), transparent 60%),
+                  radial-gradient(1200px 800px at -20% 110%, rgba(244,63,94,.12), transparent 60%),
+                  var(--bg);
+      color: var(--text);
+    }
+    header {
+      position: sticky; top: 0; z-index: 10;
+      backdrop-filter: blur(8px);
+      background: rgba(11,18,32,.7);
+      border-bottom: 1px solid rgba(148,163,184,.15);
+    }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+    .title { display:flex; align-items:center; gap:14px; }
+    .logo {
+      width: 38px; height: 38px; border-radius: 12px; display:grid; place-items:center;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      box-shadow: var(--shadow);
+      font-weight: 800; color: #0b1220;
+    }
+    h1 { font-size: clamp(18px, 3.2vw, 26px); margin: 0; letter-spacing: .3px; }
+    .muted { color: var(--muted); font-size: 13px; }
+
+    .grid { display:grid; gap:16px; grid-template-columns: 1.2fr .8fr; }
+    @media (max-width: 980px){ .grid { grid-template-columns: 1fr; } }
+
+    .card { background: var(--card); border: 1px solid rgba(148,163,184,.12); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; }
+    .controls { display:flex; flex-wrap:wrap; gap:12px; align-items:end; }
+    .field { display:grid; gap:6px; }
+    .field label { font-size: 12px; color: var(--muted); }
+    .field input, .field select, .field button {
+      background: #0b1220; border: 1px solid rgba(148,163,184,.2); color: var(--text);
+      padding: 10px 12px; border-radius: 12px; outline: none;
+    }
+    .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(34,211,238,.15); }
+    .btn {
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      color:#0b1220; font-weight: 700; cursor: pointer; border:none;
+    }
+    .btn.secondary { background: #0b1220; color: var(--text); border: 1px solid rgba(148,163,184,.25); }
+
+    .stats { display:grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    @media (max-width: 780px){ .stats { grid-template-columns: repeat(2,1fr); } }
+    .stat { background: #0b1220; padding: 14px; border-radius: 14px; border:1px solid rgba(148,163,184,.15); display:grid; gap:6px; }
+    .stat .label { font-size:12px; color:var(--muted); }
+    .stat .value { font-size:20px; font-weight: 800; letter-spacing:.3px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 10px 10px; border-bottom: 1px dashed rgba(148,163,184,.15); }
+    th { text-align:left; color: var(--muted); font-weight:600; font-size:12px; letter-spacing:.4px; text-transform: uppercase; }
+    tr:hover { background: rgba(148,163,184,.06); }
+    .hash { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    .pill { display:inline-flex; align-items:center; gap:6px; padding: 4px 10px; border-radius: 999px; font-weight:700; font-size:12px; }
+    .pill.warn { background: rgba(245,158,11,.18); color: #fbbf24; border:1px solid rgba(245,158,11,.35); }
+    .pill.big { background: rgba(34,197,94,.18); color: #86efac; border:1px solid rgba(34,197,94,.35); }
+    .pill.whale { background: rgba(34,211,238,.18); color: #67e8f9; border:1px solid rgba(34,211,238,.35); }
+
+    canvas { width: 100%; height: 220px; display: block; }
+
+    .footer { opacity:.8; font-size:12px; color:var(--muted); text-align:center; padding: 24px 0; }
+    .link { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="title">
+        <div class="logo">🐋</div>
+        <div>
+          <h1>Monitor de Baleias — Bitcoin (AO VIVO)</h1>
+          <div class="muted">WebSocket da Blockchain.com • Sem servidor • Filtro por valor • Alertas • CSV</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap" style="display:grid; gap:16px;">
+    <section class="grid">
+      <div class="card">
+        <div class="controls">
+          <div class="field">
+            <label>Mínimo por transação (BTC)</label>
+            <input id="minBtc" type="number" step="0.1" value="100" min="0" />
+          </div>
+          <div class="field">
+            <label>Mínimo por transação (USD)</label>
+            <input id="minUsd" type="number" step="100000" value="0" min="0" />
+          </div>
+          <div class="field">
+            <label>Som de alerta</label>
+            <select id="sound">
+              <option value="off">Desligado</option>
+              <option value="on" selected>Ligado</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Conexão</label>
+            <button id="toggle" class="btn">Conectar</button>
+          </div>
+          <div class="field">
+            <label>Exportar</label>
+            <button id="export" class="btn secondary">CSV</button>
+          </div>
+        </div>
+        <div style="height:12px"></div>
+        <div class="stats">
+          <div class="stat"><div class="label">Preço BTC</div><div class="value" id="price">—</div><div class="muted" id="priceChange">24h: —</div></div>
+          <div class="stat"><div class="label">Baleias detectadas</div><div class="value" id="count">0</div><div class="muted">Sessão atual</div></div>
+          <div class="stat"><div class="label">Maior transação</div><div class="value" id="max">—</div><div class="muted" id="maxUsd">—</div></div>
+          <div class="stat"><div class="label">Taxa de entrada</div><div class="value" id="rpm">0/min</div><div class="muted">Últimos 5 min</div></div>
+        </div>
+        <div style="height:12px"></div>
+        <div class="card" style="background:#0b1220">
+          <canvas id="chart" height="220"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 10px 0;">Como funciona</h3>
+        <ol style="margin:0; padding-left: 18px; line-height:1.6; color: var(--muted);">
+          <li>Usa o <strong>WebSocket público</strong> da <em>Blockchain.com</em> (canal <code>unconfirmed_tx</code>) para captar transações <em>mempool</em> em tempo real.</li>
+          <li>Converte o valor total de <em>outputs</em> em BTC e USD (via preço da CoinGecko).</li>
+          <li>Aplica seus filtros mínimos (BTC/USD) e registra apenas as “baleias”.</li>
+          <li>Gera alertas sonoros opcionais e plota um gráfico das últimas capturas.</li>
+        </ol>
+        <p class="muted" style="margin-top:10px">Dica: ajuste o filtro. Para BTC, 100+ costuma representar grandes movimentos on-chain.</p>
+        <div style="height:10px"></div>
+        <div class="pill whale">Rede: Bitcoin • Fonte: ws.blockchain.info</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <h3 style="margin:0">Transações de Baleias (ao vivo)</h3>
+        <div class="muted" id="status">Desconectado</div>
+      </div>
+      <div style="overflow:auto; max-height: 50vh; margin-top:8px;">
+        <table id="table">
+          <thead>
+            <tr>
+              <th>Hora</th>
+              <th>BTC</th>
+              <th>USD (est.)</th>
+              <th>Outputs / Endereços</th>
+              <th>Hash</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="footer">
+      Feito para monitoramento educativo. Preço USD é estimado (Spot CoinGecko). Transações são <em>não confirmadas</em> até entrarem em bloco.
+    </section>
+  </main>
+
+  <script>
+    // ======= Estado =======
+    let ws = null;
+    let priceUSD = 0; let priceChange24 = 0;
+    let running = false;
+    let rows = [];
+    let last5min = [];
+
+    const els = {
+      minBtc: document.getElementById('minBtc'),
+      minUsd: document.getElementById('minUsd'),
+      sound: document.getElementById('sound'),
+      toggle: document.getElementById('toggle'),
+      exportBtn: document.getElementById('export'),
+      price: document.getElementById('price'),
+      priceChange: document.getElementById('priceChange'),
+      count: document.getElementById('count'),
+      max: document.getElementById('max'),
+      maxUsd: document.getElementById('maxUsd'),
+      rpm: document.getElementById('rpm'),
+      status: document.getElementById('status'),
+      table: document.querySelector('#table tbody'),
+      chart: document.getElementById('chart'),
+    };
+
+    // ======= Persistência =======
+    const saved = JSON.parse(localStorage.getItem('whale-settings') || '{}');
+    if(saved.minBtc != null) els.minBtc.value = saved.minBtc;
+    if(saved.minUsd != null) els.minUsd.value = saved.minUsd;
+    if(saved.sound) els.sound.value = saved.sound;
+    function saveSettings(){
+      localStorage.setItem('whale-settings', JSON.stringify({
+        minBtc: parseFloat(els.minBtc.value)||0,
+        minUsd: parseFloat(els.minUsd.value)||0,
+        sound: els.sound.value
+      }));
+    }
+    ['change','input'].forEach(ev=>{
+      els.minBtc.addEventListener(ev, saveSettings);
+      els.minUsd.addEventListener(ev, saveSettings);
+      els.sound.addEventListener('change', saveSettings);
+    });
+
+    // ======= Preço BTC (CoinGecko) =======
+    async function fetchPrice(){
+      try {
+        const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true');
+        const j = await r.json();
+        priceUSD = j.bitcoin.usd || 0;
+        priceChange24 = j.bitcoin.usd_24h_change || 0;
+        els.price.textContent = priceUSD ? $ ${fmt(priceUSD)} : '—';
+        const sign = priceChange24 >= 0 ? '+' : '';
+        els.priceChange.textContent = 24h: ${sign}${priceChange24.toFixed(2)}%;
+        els.priceChange.style.color = priceChange24 >= 0 ? 'var(--okay)' : 'var(--danger)';
+      } catch(e){ console.warn('Falha preço', e); }
+    }
+    fetchPrice(); setInterval(fetchPrice, 60_000);
+
+    // ======= Conexão WS Blockchain.com =======
+    function connect(){
+      if(running) return;
+      running = true;
+      els.toggle.textContent = 'Desconectar';
+      els.status.textContent = 'Conectando…';
+      ws = new WebSocket('wss://ws.blockchain.info/inv');
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ op: 'unconfirmed_sub' }));
+        els.status.textContent = 'Conectado (mempool)';
+      };
+      ws.onmessage = onTx;
+      ws.onerror = (e) => { els.status.textContent = 'Erro no WebSocket'; console.error(e); };
+      ws.onclose = () => { running = false; els.toggle.textContent = 'Conectar'; els.status.textContent = 'Desconectado'; };
+    }
+    function disconnect(){ if(ws){ ws.close(); } }
+
+    els.toggle.addEventListener('click', ()=>{ running ? disconnect() : connect(); });
+
+    // ======= Processamento de TX =======
+    function onTx(msg){
+      try{
+        const data = JSON.parse(msg.data);
+        if(data.op !== 'utx') return;
+        const tx = data.x;
+        const time = tx.time || Math.floor(Date.now()/1000);
+        const totalSats = (tx.out||[]).reduce((sum, o) => sum + (o.value||0), 0);
+        const totalBTC = totalSats / 1e8;
+        const totalUSD = priceUSD * totalBTC;
+
+        const minBtc = parseFloat(els.minBtc.value)||0;
+        const minUsd = parseFloat(els.minUsd.value)||0;
+        const pass = (minBtc>0 && totalBTC>=minBtc) || (minUsd>0 && totalUSD>=minUsd) || (minBtc===0 && minUsd===0);
+        if(!pass) return;
+
+        // estatísticas
+        rows.push({time, totalBTC, totalUSD, hash: tx.hash, outputs: tx.out?.length||0});
+        updateStats(totalBTC, totalUSD);
+        pushRow(time, totalBTC, totalUSD, tx);
+        ping(totalUSD);
+        pushChart(totalBTC);
+        tickRPM(time);
+      }catch(e){ console.error('Falha parse tx', e); }
+    }
+
+    function updateStats(btc, usd){
+      els.count.textContent = rows.length;
+      const currentMax = parseFloat(els.max.getAttribute('data-max')||'0');
+      if(btc > currentMax){
+        els.max.setAttribute('data-max', btc);
+        els.max.textContent = ${btc.toFixed(2)} BTC;
+        els.maxUsd.textContent = $ ${fmt(usd)};
+      }
+    }
+
+    function pushRow(time, btc, usd, tx){
+      const tr = document.createElement('tr');
+      const dt = new Date(time*1000);
+      const outs = (tx.out||[]).slice(0,4).map(o=>o.addr||'—').join(', ')+((tx.out||[]).length>4?'…':'');
+      tr.innerHTML = `
+        <td>${two(dt.getHours())}:${two(dt.getMinutes())}:${two(dt.getSeconds())}</td>
+        <td><span class="pill ${btc>=500?'whale':(btc>=200?'big':'warn')}">${btc.toFixed(2)} BTC</span></td>
+        <td>$ ${fmt(usd)}</td>
+        <td>${(tx.out||[]).length} / <span class="muted">${outs}</span></td>
+        <td class="hash"><a class="link" href="https://www.blockchain.com/explorer/transactions/btc/${tx.hash}" target="_blank" rel="noopener">${tx.hash.slice(0,10)}…</a></td>
+      `;
+      els.table.prepend(tr);
+      // limitar linhas
+      const maxRows = 400;
+      while(els.table.rows.length > maxRows){ els.table.deleteRow(-1); }
+    }
+
+    function ping(usd){
+      if(els.sound.value !== 'on') return;
+      const vol = usd>0 ? Math.min(1, Math.log10(usd/1_000_000 + 1)) : .2; // volume proporcional
+      try {
+        const ctx = new (window.AudioContext||window.webkitAudioContext)();
+        const o = ctx.createOscillator(); const g = ctx.createGain();
+        o.type = 'sine'; o.frequency.setValueAtTime(220 + Math.min(880, usd/1_000_000), ctx.currentTime);
+        g.gain.setValueAtTime(vol, ctx.currentTime);
+        o.connect(g).connect(ctx.destination);
+        o.start(); o.stop(ctx.currentTime + 0.15);
+      } catch(e) { /* noop */ }
+    }
+
+    // ======= RPM (eventos por minuto, janela 5min) =======
+    function tickRPM(ts){
+      const now = ts;
+      last5min.push(now);
+      const cutoff = now - 300;
+      last5min = last5min.filter(t => t >= cutoff);
+      const perMin = (last5min.length / 5).toFixed(1);
+      els.rpm.textContent = ${perMin}/min;
+    }
+
+    // ======= Gráfico simples =======
+    const ctx2d = els.chart.getContext('2d');
+    const chartData = [];
+    function pushChart(btc){
+      chartData.push(btc);
+      if(chartData.length>60) chartData.shift();
+      drawChart();
+    }
+    function drawChart(){
+      const c = els.chart; const ctx = ctx2d;
+      const w = c.width = c.clientWidth * devicePixelRatio;
+      const h = c.height = c.clientHeight * devicePixelRatio;
+      ctx.clearRect(0,0,w,h);
+      // eixo
+      ctx.globalAlpha = .6; ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(148,163,184,.35)';
+      ctx.beginPath(); ctx.moveTo(40,10); ctx.lineTo(40,h-30); ctx.lineTo(w-10,h-30); ctx.stroke();
+      // dados
+      const padL = 48, padR = 12, padT = 12, padB = 36;
+      const W = w - padL - padR; const H = h - padT - padB;
+      const max = Math.max(100, ...chartData);
+      const stepW = chartData.length? W/(chartData.length-1): W;
+      ctx.globalAlpha = 1; ctx.lineWidth = 2; ctx.strokeStyle = '#67e8f9';
+      ctx.beginPath();
+      chartData.forEach((v,i)=>{
+        const x = padL + i*stepW;
+        const y = padT + (1 - (v/max)) * H;
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      });
+      ctx.stroke();
+      // rótulo max
+      ctx.fillStyle = '#94a3b8'; ctx.font = ${12*devicePixelRatio}px system-ui;
+      ctx.fillText(máx: ${max.toFixed(0)} BTC, padL+6, padT+14*devicePixelRatio);
+    }
+
+    // ======= Exportar CSV =======
+    els.exportBtn.addEventListener('click', ()=>{
+      const header = 'time,btc,usd,hash,outputs\n';
+      const lines = rows.map(r=>[new Date(r.time*1000).toISOString(), r.totalBTC.toFixed(8), r.totalUSD.toFixed(2), r.hash, r.outputs].join(','));
+      const blob = new Blob([header+lines.join('\n')], {type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = whales_btc_${Date.now()}.csv; a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // ======= Utils =======
+    function two(n){ return n.toString().padStart(2,'0'); }
+    function fmt(n){ return (n||0).toLocaleString('en-US', {maximumFractionDigits: 0}); }
+
+    // Auto-conectar se o usuário já conectou antes (opcional)
+    if(saved.auto){ connect(); }
+  </script>
+</body>
+</html>
