@@ -229,9 +229,9 @@
         const j = await r.json();
         priceUSD = j.bitcoin.usd || 0;
         priceChange24 = j.bitcoin.usd_24h_change || 0;
-        els.price.textContent = priceUSD ? $ ${fmt(priceUSD)} : '—';
+        els.price.textContent = priceUSD ? `$ ${fmt(priceUSD)}` : '—';
         const sign = priceChange24 >= 0 ? '+' : '';
-        els.priceChange.textContent = 24h: ${sign}${priceChange24.toFixed(2)}%;
+        els.priceChange.textContent = `24h: ${sign}${priceChange24.toFixed(2)}%`;
         els.priceChange.style.color = priceChange24 >= 0 ? 'var(--okay)' : 'var(--danger)';
       } catch(e){ console.warn('Falha preço', e); }
     }
@@ -287,8 +287,8 @@
       const currentMax = parseFloat(els.max.getAttribute('data-max')||'0');
       if(btc > currentMax){
         els.max.setAttribute('data-max', btc);
-        els.max.textContent = ${btc.toFixed(2)} BTC;
-        els.maxUsd.textContent = $ ${fmt(usd)};
+        els.max.textContent = `${btc.toFixed(2)} BTC`;
+        els.maxUsd.textContent = `$ ${fmt(usd)}`;
       }
     }
 
@@ -329,7 +329,7 @@
       const cutoff = now - 300;
       last5min = last5min.filter(t => t >= cutoff);
       const perMin = (last5min.length / 5).toFixed(1);
-      els.rpm.textContent = ${perMin}/min;
+      els.rpm.textContent = `${perMin}/min`;
     }
 
     // ======= Gráfico simples =======
@@ -362,8 +362,8 @@
       });
       ctx.stroke();
       // rótulo max
-      ctx.fillStyle = '#94a3b8'; ctx.font = ${12*devicePixelRatio}px system-ui;
-      ctx.fillText(máx: ${max.toFixed(0)} BTC, padL+6, padT+14*devicePixelRatio);
+      ctx.fillStyle = '#94a3b8'; ctx.font = `${12*devicePixelRatio}px system-ui`;
+      ctx.fillText(`máx: ${max.toFixed(0)} BTC`, padL+6, padT+14*devicePixelRatio);
     }
 
     // ======= Exportar CSV =======
@@ -373,7 +373,7 @@
       const blob = new Blob([header+lines.join('\n')], {type:'text/csv'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = whales_btc_${Date.now()}.csv; a.click();
+      a.href = url; a.download = `whales_btc_${Date.now()}.csv`; a.click();
       URL.revokeObjectURL(url);
     });
 
